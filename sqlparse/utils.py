@@ -78,7 +78,7 @@ def recurse(*cls):
     return wrap
 
 
-def imt(token, i=None, m=None, t=None):
+def imt(token, i=None, m=None, t=None, exclud=[]):
     """Helper function to simplify comparisons Instance, Match and TokenType
     :param token:
     :param i: Class or Tuple/List of Classes
@@ -90,7 +90,9 @@ def imt(token, i=None, m=None, t=None):
     types = [t, ] if t and not isinstance(t, list) else t
     mpatterns = [m, ] if m and not isinstance(m, list) else m
 
-    if token is None:
+    if token.normalized and exclud and token.normalized in exclud:
+        return False
+    elif token is None:
         return False
     elif clss and isinstance(token, clss):
         return True

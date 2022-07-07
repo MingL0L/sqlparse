@@ -461,6 +461,16 @@ class Identifier(NameAliasMixin, TokenList):
         _, ordering = self.token_next_by(t=T.Keyword.Order)
         return ordering.normalized if ordering else None
 
+    def get_where(self):
+        """Returns the where condition or ``None`` as uppercase string."""
+        _, where = self.token_next_by(i=Where)
+        return where.normalized if where else ''
+
+    def get_group_by(self):
+        """Returns the group by or ``None`` as uppercase string."""
+        _, groupby = self.token_next_by(i=GroupBy)
+        return groupby.normalized if groupby else ''
+
     def get_array_indices(self):
         """Returns an iterator of index token lists"""
 
@@ -550,6 +560,16 @@ class Where(TokenList):
     M_OPEN = T.Keyword, 'WHERE'
     M_CLOSE = T.Keyword, (
         'ORDER BY', 'GROUP BY', 'LIMIT', 'UNION', 'UNION ALL', 'EXCEPT',
+        'HAVING', 'RETURNING', 'INTO')
+
+class GroupBy(TokenList):
+    """A GroupBy clause."""
+    M_OPEN = T.Keyword, ('GROUP BY')
+    M_CLOSE = T.Keyword, (
+        'ORDER BY',
+        'GROUP BY',
+        'LIMIT',
+        'UNION', 'UNION ALL', 'EXCEPT',
         'HAVING', 'RETURNING', 'INTO')
 
 

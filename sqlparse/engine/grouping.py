@@ -172,6 +172,54 @@ def group_as(tlist):
     _group(tlist, sql.Identifier, match, valid_prev, valid_next, post)
 
 
+def group_over(tlist):
+    def match(token):
+        return isinstance(token, sql.Function) and token.tokens[0].normalized == 'OVER'
+
+    def valid_prev(token):
+        return isinstance(token, sql.Function)
+
+    def valid_next(token):
+        return token.ttype == T.Name
+
+    def post(tlist, pidx, tidx, nidx):
+        return pidx, nidx
+
+    _group(tlist, sql.Identifier, match, valid_prev, valid_next, post)
+
+
+def group_condition(tlist):
+    def match(token):
+        return isinstance(token, sql.Where) or isinstance(token, sql.GroupBy)
+
+    def valid_prev(token):
+        return isinstance(token, sql.Identifier)
+
+    def valid_next(token):
+        return True
+
+    def post(tlist, pidx, tidx, nidx):
+        return pidx, tidx
+
+    _group(tlist, sql.Identifier, match, valid_prev, valid_next, post)
+
+
+def group_exp(tlist):
+    def match(token):
+        return isinstance(token, sql.Function) and token.tokens[0].normalized == 'EXCEPT'
+
+    def valid_prev(token):
+        return token.ttype == T.Wildcard
+
+    def valid_next(token):
+        return True
+
+    def post(tlist, pidx, tidx, nidx):
+        return pidx, tidx
+
+    _group(tlist, sql.Identifier, match, valid_prev, valid_next, post)
+
+
 def group_assignment(tlist):
     def match(token):
         return token.match(T.Assignment, ':=')
@@ -279,12 +327,16 @@ def group_identifier_list(tlist):
     def valid(token):
         return imt(token, i=sqlcls, m=m_role, t=ttypes)
 
+    def valid_next(token):
+        return imt(token, i=sqlcls, m=m_role, t=ttypes, exclud=['FROM'])
+
     def post(tlist, pidx, tidx, nidx):
         return pidx, nidx
 
-    valid_prev = valid_next = valid
+    valid_prev = valid
+    valid_next = valid_next
     _group(tlist, sql.IdentifierList, match,
-           valid_prev, valid_next, post, extend=True)
+           valid_prev, valid_next, post, extend=True, recurse_cls_ext=sql.Function)
 
 
 @recurse(sql.Comment)
@@ -315,6 +367,23 @@ def group_where(tlist):
         eidx = tlist.token_index(end)
         tlist.group_tokens(sql.Where, tidx, eidx)
         tidx, token = tlist.token_next_by(m=sql.Where.M_OPEN, idx=tidx)
+
+
+@recurse(sql.GroupBy)
+def group_group_by(tlist):
+    tidx, token = tlist.token_next_by(m=sql.GroupBy.M_OPEN)
+    while token:
+        eidx, end = tlist.token_next_by(m=sql.GroupBy.M_CLOSE, idx=tidx)
+
+        if end is None:
+            end = tlist._groupable_tokens[-1]
+        else:
+            end = tlist.tokens[eidx - 1]
+        # TODO: convert this to eidx instead of end token.
+        # i think above values are len(tlist) and eidx-1
+        eidx = tlist.token_index(end)
+        tlist.group_tokens(sql.GroupBy, tidx, eidx)
+        tidx, token = tlist.token_next_by(m=sql.GroupBy.M_OPEN, idx=tidx)
 
 
 @recurse()
@@ -398,9 +467,11 @@ def group(stmt):
 
         group_functions,
         group_where,
+        group_group_by,
         group_period,
         group_arrays,
         group_identifier,
+        group_condition,
         group_order,
         group_typecasts,
         group_tzcasts,
@@ -424,7 +495,8 @@ def _group(tlist, cls, match,
            valid_next=lambda t: True,
            post=None,
            extend=True,
-           recurse=True
+           recurse=True,
+           recurse_cls_ext=None
            ):
     """Groups together tokens that are joined by a middle token. i.e. x < y"""
 
@@ -439,7 +511,13 @@ def _group(tlist, cls, match,
             continue
 
         if recurse and token.is_group and not isinstance(token, cls):
-            _group(token, cls, match, valid_prev, valid_next, post, extend)
+            if recurse_cls_ext:
+                if not isinstance(token, recurse_cls_ext):
+                    _group(token, cls, match, valid_prev, valid_next, post,
+                           extend, recurse=recurse, recurse_cls_ext=recurse_cls_ext)
+            else:
+                _group(token, cls, match, valid_prev, valid_next, post,
+                       extend, recurse=recurse, recurse_cls_ext=recurse_cls_ext)
 
         if match(token):
             nidx, next_ = tlist.token_next(tidx)
